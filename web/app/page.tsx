@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, createSignup } from "@/lib/api";
-import { getLastToken, rememberToken } from "@/lib/session";
-import type { ResetDemoResponse } from "@/lib/types";
+import { getLastToken } from "@/lib/session";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -39,26 +38,6 @@ export default function LandingPage() {
     if (token.trim()) router.push(`/h/${token.trim()}`);
   }
 
-  const [resetting, setResetting] = useState(false);
-  const [resetError, setResetError] = useState<string | null>(null);
-
-  async function resetDemo() {
-    setResetting(true);
-    setResetError(null);
-    try {
-      const res = await fetch("/api/admin/reset-demo", { method: "POST" });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error?.message ?? "Reset failed");
-      const demo = body as ResetDemoResponse;
-      rememberToken(demo.owner.token);
-      router.push(`/h/${demo.owner.token}`);
-    } catch (err) {
-      setResetError(err instanceof Error ? err.message : "Reset failed");
-    } finally {
-      setResetting(false);
-    }
-  }
-
   return (
     <div className="flex flex-1 items-center justify-center bg-slate-50 px-4 py-12 dark:bg-slate-950">
       <div className="w-full max-w-md space-y-8">
@@ -87,18 +66,9 @@ export default function LandingPage() {
             No flat yet?{" "}
             <a href="/setup" className="font-medium text-emerald-700 hover:underline dark:text-emerald-400">
               Set one up
-            </a>{" "}
-            or{" "}
-            <button
-              onClick={resetDemo}
-              disabled={resetting}
-              className="font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400"
-            >
-              {resetting ? "loading demo…" : "load the demo flat"}
-            </button>
+            </a>
             .
           </p>
-          {resetError && <p className="mt-1 text-xs text-rose-600">{resetError}</p>}
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">

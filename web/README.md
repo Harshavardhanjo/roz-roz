@@ -7,7 +7,7 @@ deltas since the LLD).
 ## Run locally
 
 ```bash
-cp .env.local.example .env.local   # set NEXT_PUBLIC_API_BASE_URL and ADMIN_TOKEN
+cp .env.local.example .env.local   # set NEXT_PUBLIC_API_BASE_URL
 npm install
 npm run dev
 ```
@@ -23,7 +23,6 @@ backend's `WEB_ORIGIN` must include `http://localhost:3000` (its default) or COR
 | `lib/types.ts` | Response types mirroring `app/services/views.py` / `app/stubs.py` in the backend |
 | `lib/session.ts`, `lib/MeContext.tsx` | Resolves a member's magic-link token via `GET /api/me`; shares it to child pages via context |
 | `app/h/[token]/` | Everything behind a flat's magic link: dashboard, payments (the mock top-up flow), votes, audit |
-| `app/api/admin/reset-demo/route.ts` | Server-only proxy to `POST /api/admin/reset-demo` — keeps `ADMIN_TOKEN` off the browser |
 
 No real money moves anywhere in this app — every payment is simulated by the backend's `SimulatedProvider`, and
 the UI says so.
