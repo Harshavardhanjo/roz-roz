@@ -7,9 +7,11 @@ import uuid
 
 import httpx
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.agents import runtime, tools_client
+from app.agents.outputs import OUTPUT_MODELS, LiaisonOutput, TreasurerOutput, output_schema, output_schema_text
 from app.agents.runtime import AgentError, minimise_context, parse_output, run_liaison, run_treasurer
 from app.agents.tools_client import ToolTransportError
 from app.config import settings
@@ -218,7 +220,7 @@ def test_tool_definitions_and_prompt():
     assert all(t["description"] for t in tdefs.values())
     prompt = runtime.render_prompt("liaison", date="2026-10-24", message_id=MSG_ID, helper_context_json={"a": 1})
     assert "2026-10-24" in prompt and MSG_ID in prompt and '{"a": 1}' in prompt
-    assert '{"clarify": null}' in prompt  # JSON braces survive (str.replace, not str.format)
+    assert output_schema_text("liaison") in prompt  # JSON braces survive (str.replace, not str.format)
 
 
 # ---- local liaison loop ----
@@ -252,7 +254,7 @@ def test_local_liaison_replies_from_outcomes_and_keys(fake_tools, db):
     assert req["headers"]["x-api-key"] == "test-anthropic-key"
     assert req["headers"]["anthropic-version"] == "2023-06-01"
     assert req["body"]["model"] == "claude-haiku-5-5"
-    assert [t["name"] for t in req["body"]["tools"]] == list(runtime.LIAISON_TOOLS)
+    assert [t["name"] for t in req["body"]["tools"]] == [*runtime.LIAISON_TOOLS, "final_answer"]
     assert "naale 500" in req["body"]["messages"][0]["content"]
     second = script.requests[1]["body"]["messages"]
     results = second[-1]["content"]
@@ -352,18 +354,18 @@ def test_employment_outside_context_and_foreign_tools_are_refused(fake_tools):
     assert all(r["is_error"] for r in results)
 
 
-def test_tool_call_cap_then_tool_choice_none(fake_tools, db):
+def test_tool_call_cap_then_final_answer_is_forced(fake_tools, db):
     use = {"employment_id": EMPLOYMENT_ID}
     script = Script(
         *[msg(tool_use("get_balances", use)) for _ in range(5)],
         msg(tool_use("get_balances", use), tool_use("get_balances", use)),  # 6th allowed, 7th refused
-        msg(text('{"clarify": null}')),
+        msg(tool_use("final_answer", {"clarify": None})),
     )
     out = liaison("balance", script)
     assert len(fake_tools.calls) == 6
     assert [c["idempotency_key"] for c in fake_tools.calls] == [f"wamid.A1:{i}" for i in range(6)]
     last = script.requests[-1]["body"]
-    assert last["tool_choice"] == {"type": "none"}
+    assert last["tool_choice"] == {"type": "tool", "name": "final_answer"}
     refused = last["messages"][-1]["content"][-1]
     assert refused["is_error"] is True and "limit" in refused["content"]
     assert "tool_choice" not in script.requests[0]["body"]
@@ -576,7 +578,7 @@ def test_local_treasurer_scripted(monkeypatch, fake_tools, db):
     assert out["status"] == "executed" and out["summary"] == "Auto-approved the advance."
     keys = [c["idempotency_key"] for c in fake_tools.calls]
     assert keys == [f"treasurer:{REQUEST_ID}:{i}" for i in range(3)]  # open_vote for another request refused
-    assert [t["name"] for t in script.requests[0]["body"]["tools"]] == list(runtime.TREASURER_TOOLS)
+    assert [t["name"] for t in script.requests[0]["body"]["tools"]] == [*runtime.TREASURER_TOOLS, "final_answer"]
     (row,) = agent_runs(db, "treasurer")
     assert row.outcome["status"] == "executed" and len(row.tool_calls) == 4
 
@@ -642,3 +644,97 @@ def test_e2e_treasurer_local_inside_tool(client, db, real_tools, monkeypatch):
     assert [c["idempotency_key"] for c in row.tool_calls] == [f"treasurer:{rid}:{i}" for i in range(3)]
     db.expire_all()
     assert db.get(Request, uuid.UUID(rid)).status == "executed"
+
+
+# ---- structured output (app/agents/outputs.py) ----
+
+
+def test_output_models_are_strict():
+    assert LiaisonOutput.model_validate({"clarify": "  Which house? "}).clarify == "Which house?"
+    assert LiaisonOutput.model_validate({"clarify": "   "}).clarify is None
+    with pytest.raises(ValidationError):
+        LiaisonOutput.model_validate({"clarify": None, "replies": []})
+    with pytest.raises(ValidationError):
+        LiaisonOutput.model_validate({"clarify": "x" * 301})
+    assert len(TreasurerOutput.model_validate({"status": "executed", "summary": "y" * 400}).summary) == 300
+    with pytest.raises(ValidationError):
+        TreasurerOutput.model_validate({"status": "approved"})
+
+
+def test_output_schemas_come_from_the_models():
+    for agent, model in OUTPUT_MODELS.items():
+        schema = output_schema(agent)
+        assert schema == model.model_json_schema()
+        assert schema["additionalProperties"] is False
+    treasurer = output_schema("treasurer")
+    assert treasurer["required"] == ["status"]
+    assert treasurer["properties"]["status"]["enum"] == ["executed", "needs_vote", "needs_topup", "rejected"]
+
+
+@pytest.mark.parametrize("agent", ["liaison", "treasurer"])
+def test_prompts_embed_the_output_schema(agent):
+    prompt = runtime.render_prompt(
+        agent, date="2026-10-24", weekday="Saturday", lang="kn", helper_context_json={}, message_id=MSG_ID
+    )
+    assert output_schema_text(agent) in prompt
+    assert "{output_schema}" not in prompt and "{date}" not in prompt
+
+
+def test_local_liaison_answers_through_final_answer_tool(fake_tools, db):
+    script = Script(msg(tool_use("final_answer", {"clarify": "Which house, Lakshmi?"})))
+    out = liaison("advance beku", script)
+    assert out["status"] == "clarify" and out["text"] == "Which house, Lakshmi?"
+    assert len(script.requests) == 1 and fake_tools.calls == []
+    offered = script.requests[0]["body"]["tools"][-1]
+    assert offered["name"] == "final_answer" and offered["input_schema"] == LiaisonOutput.model_json_schema()
+    assert "tool_choice" not in script.requests[0]["body"]
+
+
+def test_final_answer_in_the_same_turn_as_a_tool_call(fake_tools, db):
+    script = Script(
+        msg(
+            tool_use("create_advance_request", {"employment_id": EMPLOYMENT_ID, "amount_paise": 50000}),
+            tool_use("final_answer", {"clarify": None}),
+        )
+    )
+    out = liaison("aidu nooru advance", script)
+    assert len(script.requests) == 1
+    assert [c["idempotency_key"] for c in fake_tools.calls] == ["wamid.A1:0"]
+    assert out["status"] == "ok" and out["text"].startswith("₹500 advance approved.")
+
+
+def test_final_answer_outside_the_schema_is_not_trusted(fake_tools, db, caplog):
+    script = Script(msg(tool_use("final_answer", {"clarify": None, "reply": "₹5000 approved!"})))
+    out = liaison("advance", script)
+    assert out["status"] == "not_understood" and "5000" not in out["text"]
+    assert "failed validation" in caplog.text
+
+
+def test_plain_json_text_answer_is_still_accepted(fake_tools, db):
+    assert liaison("advance", Script(msg(text('{"clarify": "Which house?"}'))))["text"] == "Which house?"
+
+
+def test_local_treasurer_structured_answer(fake_tools, db, monkeypatch):
+    monkeypatch.setattr(settings, "agent_runtime", "local")
+    rid = {"request_id": REQUEST_ID}
+    script = Script(
+        msg(tool_use("evaluate_request", rid)),
+        msg(tool_use("check_grant", rid)),
+        msg(
+            tool_use("execute_request", rid),
+            tool_use("final_answer", {"status": "executed", "summary": "Paid the ₹500 advance."}),
+        ),
+    )
+    monkeypatch.setattr(runtime, "model_http_factory", script.client)
+    out = asyncio.run(run_treasurer(REQUEST_ID))
+    assert out["status"] == "executed" and out["summary"] == "Paid the ₹500 advance."
+    assert [c["name"] for c in fake_tools.calls] == ["evaluate_request", "check_grant", "execute_request"]
+    assert script.requests[0]["body"]["tools"][-1]["input_schema"] == TreasurerOutput.model_json_schema()
+
+
+def test_agenticorg_task_carries_the_output_schema(agenticorg):
+    org = Org((200, {"status": "completed", "confidence": 0.9, "output": {"clarify": "Which house?"}}, {}))
+    assert org_liaison(org)["text"] == "Which house?"
+    task = json.loads(org.requests[0]["body"]["inputs"]["task"])
+    assert task["output_schema"] == LiaisonOutput.model_json_schema()
+    assert output_schema_text("liaison") in task["instructions"]

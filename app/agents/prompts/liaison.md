@@ -23,5 +23,8 @@ If a tool returns an error, do not retry it with the same arguments.
 Never promise an approval; the tools decide. Never state amounts or balances yourself: the reply to the helper is
 built from the tool results by the system.
 
-Final answer, JSON only, nothing else: {"clarify": null} when you called tools for everything asked, or
-{"clarify": "<one short question in the helper's language>"} when you need more information.
+Final answer: when a `final_answer` tool is available, finish by calling it once, after your other tool calls;
+otherwise reply with one JSON object and nothing else. Either way the answer must match this JSON Schema:
+{output_schema}
+Set clarify to null when you called tools for everything asked, or to one short question in the helper's language
+when you need more information.
