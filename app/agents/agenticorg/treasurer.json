@@ -1,0 +1,321 @@
+{
+  "name": "Roz Roz treasurer",
+  "model": "a fast model, e.g. Claude Haiku",
+  "limits": {
+    "max_tool_calls": 4,
+    "our_timeout_s": 7.5
+  },
+  "system_prompt": "You are the Roz Roz treasurer agent for one household. Each task is a JSON object with: instructions (your full instructions and today's date), output_schema (the JSON Schema your final answer must match), request_id, agent_run_id and rules. Follow instructions and rules exactly. Act only through the tools; they enforce the house rules. Every tool call body is {args, idempotency_key, agent_run_id}: put the tool's arguments in args, use the idempotency_key pattern from rules with n counting your tool calls from 0, and copy agent_run_id from the task. Finish with one JSON object matching output_schema and nothing else.",
+  "output_schema": {
+    "additionalProperties": false,
+    "description": "The treasurer's final answer. The request's real state is read from the tool results, not from this.",
+    "properties": {
+      "status": {
+        "description": "What happened to the request: executed (approved and paid out), needs_vote (sent to the roommates), needs_topup (the house wallet is too low), rejected.",
+        "enum": [
+          "executed",
+          "needs_vote",
+          "needs_topup",
+          "rejected"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "summary": {
+        "default": "",
+        "description": "One plain sentence for the audit log, using only numbers the tools returned.",
+        "maxLength": 300,
+        "title": "Summary",
+        "type": "string"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "title": "TreasurerOutput",
+    "type": "object"
+  },
+  "tools": [
+    {
+      "name": "evaluate_request",
+      "description": "Read what the house rules say about a request: decision AUTO, VOTE or NEEDS_TOPUP.",
+      "method": "POST",
+      "url": "https://roz-roz.vercel.app/tools/evaluate_request",
+      "headers": {
+        "Authorization": "Bearer <TOOLS_TOKEN from the backend's Vercel env; never commit it>",
+        "Content-Type": "application/json"
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "properties": {
+              "request_id": {
+                "format": "uuid",
+                "title": "Request Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "title": "RequestArgs",
+            "type": "object"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Exactly the pattern given in the task's rules, with n = this call's index from 0."
+          },
+          "agent_run_id": {
+            "type": "string",
+            "description": "The task's agent_run_id, unchanged."
+          }
+        },
+        "required": [
+          "args",
+          "idempotency_key",
+          "agent_run_id"
+        ],
+        "additionalProperties": false
+      },
+      "response": "Always HTTP 200: {\"ok\": true, \"result\": {...}} or {\"ok\": false, \"error\": {\"code\", \"message\"}}."
+    },
+    {
+      "name": "check_grant",
+      "description": "Check that the roommates' spending grants cover a request before money moves.",
+      "method": "POST",
+      "url": "https://roz-roz.vercel.app/tools/check_grant",
+      "headers": {
+        "Authorization": "Bearer <TOOLS_TOKEN from the backend's Vercel env; never commit it>",
+        "Content-Type": "application/json"
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "properties": {
+              "request_id": {
+                "format": "uuid",
+                "title": "Request Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "title": "RequestArgs",
+            "type": "object"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Exactly the pattern given in the task's rules, with n = this call's index from 0."
+          },
+          "agent_run_id": {
+            "type": "string",
+            "description": "The task's agent_run_id, unchanged."
+          }
+        },
+        "required": [
+          "args",
+          "idempotency_key",
+          "agent_run_id"
+        ],
+        "additionalProperties": false
+      },
+      "response": "Always HTTP 200: {\"ok\": true, \"result\": {...}} or {\"ok\": false, \"error\": {\"code\", \"message\"}}."
+    },
+    {
+      "name": "execute_request",
+      "description": "Approve and pay out a request the rules auto-approve. Refused unless the rules say AUTO.",
+      "method": "POST",
+      "url": "https://roz-roz.vercel.app/tools/execute_request",
+      "headers": {
+        "Authorization": "Bearer <TOOLS_TOKEN from the backend's Vercel env; never commit it>",
+        "Content-Type": "application/json"
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "properties": {
+              "request_id": {
+                "format": "uuid",
+                "title": "Request Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "title": "RequestArgs",
+            "type": "object"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Exactly the pattern given in the task's rules, with n = this call's index from 0."
+          },
+          "agent_run_id": {
+            "type": "string",
+            "description": "The task's agent_run_id, unchanged."
+          }
+        },
+        "required": [
+          "args",
+          "idempotency_key",
+          "agent_run_id"
+        ],
+        "additionalProperties": false
+      },
+      "response": "Always HTTP 200: {\"ok\": true, \"result\": {...}} or {\"ok\": false, \"error\": {\"code\", \"message\"}}."
+    },
+    {
+      "name": "open_vote",
+      "description": "Send a request to the roommates for a vote. context_text is one line they will read.",
+      "method": "POST",
+      "url": "https://roz-roz.vercel.app/tools/open_vote",
+      "headers": {
+        "Authorization": "Bearer <TOOLS_TOKEN from the backend's Vercel env; never commit it>",
+        "Content-Type": "application/json"
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "properties": {
+              "request_id": {
+                "format": "uuid",
+                "title": "Request Id",
+                "type": "string"
+              },
+              "context_text": {
+                "title": "Context Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id",
+              "context_text"
+            ],
+            "title": "OpenVoteArgs",
+            "type": "object"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Exactly the pattern given in the task's rules, with n = this call's index from 0."
+          },
+          "agent_run_id": {
+            "type": "string",
+            "description": "The task's agent_run_id, unchanged."
+          }
+        },
+        "required": [
+          "args",
+          "idempotency_key",
+          "agent_run_id"
+        ],
+        "additionalProperties": false
+      },
+      "response": "Always HTTP 200: {\"ok\": true, \"result\": {...}} or {\"ok\": false, \"error\": {\"code\", \"message\"}}."
+    },
+    {
+      "name": "run_payroll",
+      "description": "Run the month's payroll for one employment (month is YYYY-MM).",
+      "method": "POST",
+      "url": "https://roz-roz.vercel.app/tools/run_payroll",
+      "headers": {
+        "Authorization": "Bearer <TOOLS_TOKEN from the backend's Vercel env; never commit it>",
+        "Content-Type": "application/json"
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "properties": {
+              "employment_id": {
+                "format": "uuid",
+                "title": "Employment Id",
+                "type": "string"
+              },
+              "month": {
+                "pattern": "^\\d{4}-\\d{2}$",
+                "title": "Month",
+                "type": "string"
+              }
+            },
+            "required": [
+              "employment_id",
+              "month"
+            ],
+            "title": "RunPayrollArgs",
+            "type": "object"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Exactly the pattern given in the task's rules, with n = this call's index from 0."
+          },
+          "agent_run_id": {
+            "type": "string",
+            "description": "The task's agent_run_id, unchanged."
+          }
+        },
+        "required": [
+          "args",
+          "idempotency_key",
+          "agent_run_id"
+        ],
+        "additionalProperties": false
+      },
+      "response": "Always HTTP 200: {\"ok\": true, \"result\": {...}} or {\"ok\": false, \"error\": {\"code\", \"message\"}}."
+    },
+    {
+      "name": "post_contributions",
+      "description": "Post each roommate's share of the month's helper costs (month is YYYY-MM).",
+      "method": "POST",
+      "url": "https://roz-roz.vercel.app/tools/post_contributions",
+      "headers": {
+        "Authorization": "Bearer <TOOLS_TOKEN from the backend's Vercel env; never commit it>",
+        "Content-Type": "application/json"
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "properties": {
+              "household_id": {
+                "format": "uuid",
+                "title": "Household Id",
+                "type": "string"
+              },
+              "month": {
+                "pattern": "^\\d{4}-\\d{2}$",
+                "title": "Month",
+                "type": "string"
+              }
+            },
+            "required": [
+              "household_id",
+              "month"
+            ],
+            "title": "PostContributionsArgs",
+            "type": "object"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Exactly the pattern given in the task's rules, with n = this call's index from 0."
+          },
+          "agent_run_id": {
+            "type": "string",
+            "description": "The task's agent_run_id, unchanged."
+          }
+        },
+        "required": [
+          "args",
+          "idempotency_key",
+          "agent_run_id"
+        ],
+        "additionalProperties": false
+      },
+      "response": "Always HTTP 200: {\"ok\": true, \"result\": {...}} or {\"ok\": false, \"error\": {\"code\", \"message\"}}."
+    }
+  ]
+}
