@@ -9,13 +9,14 @@ import uuid
 
 import httpx
 import pytest
+from fastapi import BackgroundTasks
 from sqlalchemy import select
 
 from app.config import settings
 from app.models import Helper, Message
 from app.voice import pipeline as pipeline_mod
 from app.voice import voice_config, whatsapp_webhook
-from app.voice.pipeline import Pipeline, get_pipeline
+from app.voice.pipeline import InboundMessage, Pipeline, get_pipeline
 from app.voice.store import PgMessageStore
 from app.voice.whatsapp_client import (
     MAX_MEDIA_BYTES,
@@ -416,6 +417,23 @@ def test_twilio_audio_and_bad_signature(client, twilio_env):
     twilio_env.mock.add(f"GET {media}", httpx.Response(200, content=b"OggS", headers={"content-type": "audio/ogg"}))
     assert tw_post(client, params).status_code == 200
     assert twilio_env.transcribe_calls[0][0] == b"OggS"
+
+
+def test_serverless_processes_inline(monkeypatch):
+    handled = []
+
+    class FakePipeline:
+        async def handle(self, msg):
+            handled.append(msg.wa_message_id)
+
+    msg = InboundMessage(wa_message_id="SM9", from_digits="919999900001", kind="text", msg_type="text", text="hi")
+    background = BackgroundTasks()
+    monkeypatch.setattr(settings, "vercel", "1")
+    asyncio.run(whatsapp_webhook.dispatch(background, FakePipeline(), [msg]))
+    assert handled == ["SM9"] and not background.tasks
+    monkeypatch.setattr(settings, "vercel", "")
+    asyncio.run(whatsapp_webhook.dispatch(background, FakePipeline(), [msg]))
+    assert handled == ["SM9"] and len(background.tasks) == 1
 
 
 def test_twilio_404_when_provider_meta(client, env):
