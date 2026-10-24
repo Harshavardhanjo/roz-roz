@@ -5,7 +5,9 @@
 - POST /webhooks/twilio     Twilio sandbox, only when WA_PROVIDER=twilio (X-Twilio-Signature)
 - POST /api/dev/voice       demo backup: run the pipeline on an uploaded file and return JSON (Bearer TOOLS_TOKEN)
 
-Webhooks answer at once; the pipeline runs as a background task and never raises.
+Webhooks answer at once and the pipeline runs as a background task, except on serverless hosts (VERCEL=1), where
+nothing is guaranteed to run after the response: there the webhook processes inline and answers when done. Replies
+go out through the provider's API either way, and the pipeline never raises.
 """
 
 import hashlib
@@ -190,6 +192,17 @@ async def process_messages(pipeline: Pipeline, messages: list[InboundMessage]) -
             log.error("background processing failed wa_message_id=%s", msg.wa_message_id, exc_info=True)
 
 
+async def dispatch(background: BackgroundTasks, pipeline: Pipeline, messages: list[InboundMessage]) -> None:
+    """Background task normally; inline on serverless, where a frozen function would drop the reply. A slow inline
+    answer costs nothing: Twilio only logs a timeout and Meta's retry is deduplicated by wa_message_id."""
+    if not messages:
+        return
+    if settings.serverless:
+        await process_messages(pipeline, messages)
+    else:
+        background.add_task(process_messages, pipeline, messages)
+
+
 def _from_dict(m: dict) -> InboundMessage | None:
     """A parse_messages() item -> InboundMessage (None if the sender is not a valid number)."""
     digits = _sender(m.get("from") or "", m.get("id") or "")
@@ -245,9 +258,8 @@ async def receive(request: Request, background: BackgroundTasks, pipeline: Pipel
         dict(Counter(m.msg_type for m in messages)),
         statuses,
     )
-    if messages:
-        background.add_task(process_messages, pipeline, messages)
-    return {"ok": True}  # answer Meta at once; the work runs in the background
+    await dispatch(background, pipeline, messages)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- Twilio sandbox (team testing only)
@@ -272,8 +284,7 @@ async def receive_twilio(request: Request, background: BackgroundTasks, pipeline
         raise HTTPException(status_code=401, detail="bad signature")
     msg = parse_twilio_form(dict(pairs))
     log.info("twilio webhook received messages=%d", int(msg is not None))
-    if msg is not None:
-        background.add_task(process_messages, pipeline, [msg])
+    await dispatch(background, pipeline, [msg] if msg is not None else [])
     return Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', media_type="text/xml")
 
 

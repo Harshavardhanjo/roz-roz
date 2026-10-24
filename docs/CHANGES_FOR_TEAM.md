@@ -126,6 +126,9 @@ anything built against the old examples; the items marked **Action** need a chan
   Hindi texts are machine drafts until a native speaker checks them.
 - Agent timeouts (env-overridable): `TOOLS_TIMEOUT_S=15` (above the 8 s treasurer that runs inside create_* calls),
   `LIAISON_TIMEOUT_S=30`.
+- WhatsApp goes through **Twilio** (`WA_PROVIDER=twilio`, webhook `https://roz-roz.vercel.app/webhooks/twilio`). On
+  Vercel the webhook processes the message inline and answers when done (nothing is guaranteed to run after the
+  response); the reply is sent through Twilio's REST API, so a webhook over Twilio's 15 s only logs a warning.
 - Follow-ups (Harsha): store `agent_run_id` on `tool_call`, keep failed tool calls for error replies, leave dev-route
   messages out of the `/stats` voice median.
 
