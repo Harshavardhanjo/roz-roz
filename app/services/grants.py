@@ -100,7 +100,13 @@ def _covers(scopes: list[str], kind: str, employment_id: uuid.UUID, amount: int)
 def check(db: Session, household_id: uuid.UUID, kind: str, employment_id: uuid.UUID, amount: int) -> GrantCheck:
     """Does every member's active grant cover the agent paying `amount` of this kind for this helper alone?"""
     scope_kind = SCOPE_KINDS.get(kind)
-    members = list(db.scalars(select(Member).where(Member.household_id == household_id).order_by(Member.created_at)))
+    members = list(
+        db.scalars(
+            select(Member)
+            .where(Member.household_id == household_id, Member.removed_at.is_(None))
+            .order_by(Member.created_at)
+        )
+    )
     checked = []
     for m in members:
         grant = active_grant(db, m)

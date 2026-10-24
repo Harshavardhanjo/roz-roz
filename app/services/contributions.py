@@ -6,13 +6,15 @@ wallets). Money moved into a spending wallet is still the household's until it's
 import uuid
 from collections.abc import Hashable
 from dataclasses import dataclass
+from datetime import datetime, time
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from .. import clock
 from ..models import ContributionStatement, Employment, Household, LedgerEntry, Member
+from .leave import month_bounds
 
 COST_KINDS = ("advance", "salary", "reimbursement", "grocery_spend")
 
@@ -97,9 +99,25 @@ def monthly_budget(db: Session, household_id: uuid.UUID) -> int:
     )
 
 
+def members_for_month(db: Session, household_id: uuid.UUID, month: str) -> list[Member]:
+    """Members who share this month's cost: everyone not removed, plus anyone removed during or after this month
+    (a roommate who leaves mid-month still settles that month in full)."""
+    start, _ = month_bounds(month)
+    return list(
+        db.scalars(
+            select(Member)
+            .where(
+                Member.household_id == household_id,
+                or_(Member.removed_at.is_(None), Member.removed_at >= datetime.combine(start, time(), clock.IST)),
+            )
+            .order_by(Member.created_at)
+        )
+    )
+
+
 def compute(db: Session, household_id: uuid.UUID, month: str) -> dict:
     household = db.get(Household, household_id)
-    members = list(db.scalars(select(Member).where(Member.household_id == household_id).order_by(Member.created_at)))
+    members = members_for_month(db, household_id, month)
     weights = {m.id: m.split_weight for m in members}
     cost = month_cost(db, household_id, month)
     rows = statement(
