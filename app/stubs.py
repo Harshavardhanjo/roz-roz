@@ -9,7 +9,30 @@ EMPLOYMENT_ID = "e9d20000-0000-4000-8000-000000000001"
 REQUEST_ID = "55a00000-0000-4000-8000-000000000001"
 VOTE_REQUEST_ID = "55a00000-0000-4000-8000-000000000002"
 
-ME = {"member_id": OWNER_ID, "household_id": HOUSEHOLD_ID, "role": "owner", "name": "Harsha"}
+ME = {
+    "member_id": OWNER_ID,
+    "household_id": HOUSEHOLD_ID,
+    "role": "owner",
+    "name": "Harsha",
+    "flats": [
+        {
+            "household_id": HOUSEHOLD_ID,
+            "household_name": "HSR Flat 302",
+            "member_id": OWNER_ID,
+            "role": "owner",
+            "token": "stub-owner-token",
+            "link": "http://localhost:3000/h/stub-owner-token",
+            "current": True,
+        }
+    ],
+}
+
+MEMBER_REMOVED = {
+    "member_id": ROOMMATE_ID,
+    "removed_at": "2026-10-24T18:00:00+05:30",
+    "final_balance_paise": 133500,
+    "month": "2026-10",
+}
 
 HELPER_CARD = {
     "employment_id": EMPLOYMENT_ID,

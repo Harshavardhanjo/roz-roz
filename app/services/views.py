@@ -253,7 +253,7 @@ def employment_detail(db: Session, emp: Employment) -> dict:
 
 
 def ledger_page(db: Session, household_id: uuid.UUID, month: str) -> dict:
-    names = {m.id: m.name for m in households.voters(db, household_id)}
+    names = {m.id: m.name for m in db.scalars(select(Member).where(Member.household_id == household_id))}
     for emp in db.scalars(select(Employment).where(Employment.household_id == household_id)):
         names[emp.id] = requests.helper_name(db, emp)
     entries = db.scalars(

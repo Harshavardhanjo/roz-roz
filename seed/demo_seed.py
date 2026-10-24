@@ -35,6 +35,7 @@ TABLES = (
     "employment",
     "helper",
     "member",
+    "person",
     "household",
 )
 
