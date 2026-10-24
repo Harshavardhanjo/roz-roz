@@ -170,8 +170,8 @@ def test_timeout_setting_used():
     assert m.calls[ELEVENLABS_STT_URL][-1].extensions["timeout"]["read"] == 2.5
 
 
-def test_default_timeout_is_6s():
-    assert cfg().stt_timeout_s == 6
+def test_default_timeout_is_10s():
+    assert cfg().stt_timeout_s == 10
 
 
 # ------------------------------------------------------------ bad responses
