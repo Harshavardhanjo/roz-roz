@@ -13,6 +13,7 @@ os.environ.update(
     ENABLE_SCHEDULER="false",
     TODAY_OVERRIDE="2026-10-24",
     TOOLS_TOKEN="test-tools",
+    CRON_SECRET="test-cron",
     ADMIN_TOKEN="test-admin",
     WEB_ORIGIN="http://localhost:3000",
     WA_BUSINESS_NUMBER="919000000000",

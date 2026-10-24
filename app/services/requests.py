@@ -299,17 +299,26 @@ def vote(db: Session, req: Request, member: Member, decision: str) -> Request:
         entity_id=req.id,
         summary=f"{member.name} voted to {decision} {describe(db, req)}",
     )
-    approvals, rejections = _tally(db, req.id)
+    return resolve_votes(db, req, actor=f"member:{member.id}")
+
+
+def resolve_votes(db: Session, req: Request, actor: str) -> Request:
+    """Approve (and execute) or reject an open vote once the outcome is certain. Votes needed never exceed the
+    number of current voters, so removing a roommate can't leave a vote that can never pass."""
+    if req.status != "needs_vote":
+        return req
     n = len(households.voters(db, req.household_id))
+    req.votes_needed = min(req.votes_needed, n)
+    approvals, rejections = _tally(db, req.id)
     if approvals >= req.votes_needed:
         req.status, req.decided_at = "approved", clock.now()
-        execute(db, req, actor=f"member:{member.id}")
+        execute(db, req, actor=actor)
     elif rejections > n - req.votes_needed:
         req.status, req.decided_at = "rejected", clock.now()
         audit.log(
             db,
             household_id=req.household_id,
-            actor=f"member:{member.id}",
+            actor=actor,
             action="reject_request",
             entity="request",
             entity_id=req.id,

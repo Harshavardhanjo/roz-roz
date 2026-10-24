@@ -42,6 +42,12 @@ class HelperCreate(BaseModel):
     grocery_monthly_budget_paise: int = Field(ge=0, le=MAX_PAISE)
 
 
+class LinkCreate(BaseModel):
+    """POST /api/me/link: the link token of another flat this person belongs to."""
+
+    other_token: str = Field(min_length=8, max_length=200)
+
+
 class MemberUpdate(BaseModel):
     split_weight: int = Field(ge=1, le=10)
 

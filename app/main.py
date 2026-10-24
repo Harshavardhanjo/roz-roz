@@ -14,7 +14,7 @@ def create_app(use_stubs: bool | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         scheduler = None
-        if not stubs and settings.enable_scheduler:
+        if not stubs and settings.enable_scheduler and not settings.serverless:
             from .services import scheduler as payday
 
             scheduler = payday.start()
@@ -32,9 +32,9 @@ def create_app(use_stubs: bool | None = None) -> FastAPI:
         app.include_router(stub_api.router)
         app.include_router(stub_api.tools_router)
     else:
-        from .routers import admin, audit, helpers, households, ledger, requests, signups, tools
+        from .routers import admin, audit, cron, helpers, households, ledger, requests, signups, tools
 
-        for module in (households, helpers, requests, ledger, audit, signups, admin, tools):
+        for module in (households, helpers, requests, ledger, audit, signups, admin, cron, tools):
             app.include_router(module.router)
     app.include_router(whatsapp_webhook.router)
 

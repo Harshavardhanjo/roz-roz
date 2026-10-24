@@ -10,7 +10,7 @@ Changes to the contracts since the LLD: [docs/CHANGES_FOR_TEAM.md](docs/CHANGES_
 ## Run locally
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 cp .env.example .env                      # set DATABASE_URL to a local Postgres
 .venv/bin/python -m scripts.migrate       # create tables (safe to re-run)
 .venv/bin/python -m seed.demo_seed        # optional: load the demo flat, prints owner/roommate links
@@ -18,6 +18,21 @@ cp .env.example .env                      # set DATABASE_URL to a local Postgres
 ```
 
 No database? `USE_STUBS=true` serves the example payloads from `app/stubs.py` for every endpoint and tool.
+
+## Deploy on Vercel
+
+The backend runs as one Python serverless function (`api/index.py`, routed by `vercel.json`). The database stays on
+Render Postgres.
+
+1. Vercel → **Add New → Project** → import `Harshavardhanjo/roz-roz` (framework preset **Other**, root `./`).
+2. Environment variables: `DATABASE_URL` (Render's **External** Database URL, as-is), `USE_STUBS=false`,
+   `PUBLIC_BASE_URL` (the Vercel URL), `WEB_ORIGIN`, `TOOLS_TOKEN`, `ADMIN_TOKEN`, `CRON_SECRET`, and the WhatsApp /
+   ElevenLabs keys when ready. Generate tokens with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
+3. Deploy, then check `https://<project>.vercel.app/health`.
+
+On Vercel (`VERCEL=1` is set automatically) the app opens one database connection per request and skips the in-process
+scheduler; Vercel Cron calls `GET /api/cron/payday` daily at 09:00 IST instead. Migrations don't run on deploy: run
+`python -m scripts.migrate` with `DATABASE_URL` set before deploying a new migration.
 
 ## Tests
 

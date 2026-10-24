@@ -13,7 +13,12 @@ class Settings(BaseSettings):
     admin_token: str = "change-me-admin"
     # true: serve the contract 2 / 3 example payloads (app/stub_api.py) instead of the real API.
     use_stubs: bool = False
+    # In-process payday job. Off on serverless hosts, where Vercel Cron calls /api/cron/payday instead.
     enable_scheduler: bool = True
+    # Vercel sends "Authorization: Bearer <CRON_SECRET>" on cron calls; the endpoint refuses everything else.
+    cron_secret: str = ""
+    # Set automatically by Vercel ("1"): no long-lived process, so no connection pool and no in-process scheduler.
+    vercel: str = ""
     # Pin "today" (YYYY-MM-DD) for rehearsals and tests; empty = the real date in IST.
     today_override: str | None = None
 
@@ -51,6 +56,10 @@ class Settings(BaseSettings):
             if url.startswith(prefix):
                 return "postgresql+psycopg://" + url[len(prefix) :]
         return url
+
+    @property
+    def serverless(self) -> bool:
+        return self.vercel == "1"
 
     @property
     def web_origins(self) -> list[str]:

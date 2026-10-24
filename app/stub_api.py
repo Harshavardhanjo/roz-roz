@@ -17,6 +17,7 @@ from .schemas import (
     EmploymentUpdate,
     HelperCreate,
     HouseholdCreate,
+    LinkCreate,
     MemberCreate,
     MemberUpdate,
     PayrollRunCreate,
@@ -51,6 +52,16 @@ def create_household(body: HouseholdCreate):
 @router.get("/me")
 def me(member: dict = Depends(stub_member)):
     return member
+
+
+@router.post("/me/link")
+def link_flat(body: LinkCreate, member: dict = Depends(stub_member)):
+    return stubs.ME
+
+
+@router.delete("/members/{mid}")
+def remove_member(mid: uuid.UUID, member: dict = Depends(stub_member)):
+    return {**stubs.MEMBER_REMOVED, "member_id": str(mid)}
 
 
 @router.post("/households/{hid}/members")

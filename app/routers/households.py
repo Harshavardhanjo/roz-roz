@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import current_member, household_of, require_owner
 from ..errors import forbidden, not_found
-from ..models import Member
-from ..schemas import HouseholdCreate, MemberCreate, MemberUpdate, RulesUpdate
-from ..services import audit, grants, households, views
+from ..models import Household, Member
+from ..schemas import HouseholdCreate, LinkCreate, MemberCreate, MemberUpdate, RulesUpdate
+from ..services import audit, grants, households, members, views
 
 router = APIRouter(prefix="/api", tags=["households"])
 
@@ -26,13 +26,23 @@ def create_household(body: HouseholdCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/me")
-def me(member: Member = Depends(current_member)):
-    return {
-        "member_id": str(member.id),
-        "household_id": str(member.household_id),
-        "role": member.role,
-        "name": member.name,
-    }
+def me(member: Member = Depends(current_member), db: Session = Depends(get_db)):
+    return members.me(db, member)
+
+
+@router.post("/me/link")
+def link_flat(body: LinkCreate, member: Member = Depends(current_member), db: Session = Depends(get_db)):
+    """Join another flat's link to this person, so either link can switch between flats."""
+    result = members.link(db, member, body.other_token)
+    db.commit()
+    return result
+
+
+@router.delete("/members/{mid}")
+def remove_member(mid: uuid.UUID, owner: Member = Depends(require_owner), db: Session = Depends(get_db)):
+    result = members.remove(db, db.get(Household, owner.household_id), mid, owner)
+    db.commit()
+    return result
 
 
 @router.post("/households/{hid}/members", status_code=201)
@@ -50,7 +60,7 @@ def update_member(
     mid: uuid.UUID, body: MemberUpdate, owner: Member = Depends(require_owner), db: Session = Depends(get_db)
 ):
     member = db.get(Member, mid)
-    if member is None or member.household_id != owner.household_id:
+    if member is None or member.household_id != owner.household_id or member.removed_at is not None:
         raise not_found("Member")
     member.split_weight = body.split_weight
     audit.log(

@@ -38,6 +38,16 @@ class Household(Base):
     created_at = _created()
 
 
+class Person(Base):
+    """One human across flats. Each flat membership (Member) keeps its own link token."""
+
+    __tablename__ = "person"
+    id = _id()
+    name = mapped_column(Text, nullable=False)
+    phone = mapped_column(Text)
+    created_at = _created()
+
+
 class Member(Base):
     __tablename__ = "member"
     id = _id()
@@ -48,6 +58,8 @@ class Member(Base):
     split_weight = mapped_column(Integer, nullable=False, default=1)
     link_token = mapped_column(Text, unique=True, nullable=False)
     grantex_grant_id = mapped_column(Text)
+    person_id = mapped_column(ForeignKey("person.id"), nullable=False)
+    removed_at = mapped_column(DateTime(timezone=True))
     created_at = _created()
 
 

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..errors import bad_request, conflict
-from ..models import Employment, Helper, Household, HouseRule, Member, Wallet
+from ..models import Employment, Helper, Household, HouseRule, Member, Person, Wallet
 from ..schemas import EmploymentUpdate, HelperCreate, RulesUpdate
 from . import audit, signups
 
@@ -41,20 +41,30 @@ def whatsapp_link() -> str | None:
     return f"https://wa.me/{number}?text={quote('Namaste')}"
 
 
+def _new_member(db: Session, household_id: uuid.UUID, name: str, phone: str, role: str, split_weight: int) -> Member:
+    """Each membership starts as its own person; POST /api/me/link joins memberships the same person holds."""
+    person = Person(name=name.strip(), phone=signups.normalize_phone(phone))
+    db.add(person)
+    db.flush()
+    member = Member(
+        household_id=household_id,
+        person_id=person.id,
+        name=name.strip(),
+        phone=phone,
+        role=role,
+        split_weight=split_weight,
+        link_token=new_token(),
+    )
+    db.add(member)
+    db.flush()
+    return member
+
+
 def create_household(db: Session, name: str, owner_name: str, owner_phone: str) -> tuple[Household, Member]:
     household = Household(name=name.strip())
     db.add(household)
     db.flush()
-    owner = Member(
-        household_id=household.id,
-        name=owner_name.strip(),
-        phone=owner_phone,
-        role="owner",
-        split_weight=1,
-        link_token=new_token(),
-    )
-    db.add(owner)
-    db.flush()
+    owner = _new_member(db, household.id, owner_name, owner_phone, "owner", 1)
     household.owner_member_id = owner.id
     db.add(HouseRule(household_id=household.id))
     db.add(Wallet(household_id=household.id, kind="house"))
@@ -72,16 +82,10 @@ def create_household(db: Session, name: str, owner_name: str, owner_phone: str) 
 
 
 def add_member(db: Session, household: Household, name: str, phone: str, split_weight: int, by: Member) -> Member:
-    member = Member(
-        household_id=household.id,
-        name=name.strip(),
-        phone=phone,
-        role="roommate",
-        split_weight=split_weight,
-        link_token=new_token(),
-    )
-    db.add(member)
-    db.flush()
+    phone_digits = signups.normalize_phone(phone)
+    if any(signups.normalize_phone(m.phone or "") == phone_digits for m in voters(db, household.id)):
+        raise conflict("member_exists", "Someone with this phone number is already in the flat")
+    member = _new_member(db, household.id, name, phone, "roommate", split_weight)
     signups.record(db, "household", member.name, phone)
     audit.log(
         db,
@@ -96,8 +100,14 @@ def add_member(db: Session, household: Household, name: str, phone: str, split_w
 
 
 def voters(db: Session, household_id: uuid.UUID) -> list[Member]:
-    """Everyone who votes and shares costs: the owner and all roommates."""
-    return list(db.scalars(select(Member).where(Member.household_id == household_id).order_by(Member.created_at)))
+    """Everyone who currently votes and shares costs: the owner and all roommates not removed."""
+    return list(
+        db.scalars(
+            select(Member)
+            .where(Member.household_id == household_id, Member.removed_at.is_(None))
+            .order_by(Member.created_at)
+        )
+    )
 
 
 def rules(db: Session, household_id: uuid.UUID) -> HouseRule:

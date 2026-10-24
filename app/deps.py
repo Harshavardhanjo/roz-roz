@@ -15,7 +15,7 @@ from .models import Employment, Household, Member, Request
 def current_member(x_roz_token: str | None = Header(default=None), db: Session = Depends(get_db)) -> Member:
     if not x_roz_token:
         raise forbidden("missing_token", "X-Roz-Token header is required")
-    member = db.scalar(select(Member).where(Member.link_token == x_roz_token))
+    member = db.scalar(select(Member).where(Member.link_token == x_roz_token, Member.removed_at.is_(None)))
     if member is None:
         raise forbidden("bad_token", "This link is not valid")
     return member
