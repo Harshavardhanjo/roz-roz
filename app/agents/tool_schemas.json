@@ -1,0 +1,425 @@
+[
+  {
+    "name": "get_helper_context",
+    "parameters": {
+      "properties": {
+        "whatsapp_e164": {
+          "title": "Whatsapp E164",
+          "type": "string"
+        }
+      },
+      "required": [
+        "whatsapp_e164"
+      ],
+      "title": "GetHelperContextArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "record_consent",
+    "parameters": {
+      "properties": {
+        "helper_id": {
+          "format": "uuid",
+          "title": "Helper Id",
+          "type": "string"
+        },
+        "employment_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Employment Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "helper_id",
+        "employment_ids"
+      ],
+      "title": "RecordConsentArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "create_leave_request",
+    "parameters": {
+      "properties": {
+        "employment_id": {
+          "format": "uuid",
+          "title": "Employment Id",
+          "type": "string"
+        },
+        "leave_from": {
+          "format": "date",
+          "title": "Leave From",
+          "type": "string"
+        },
+        "leave_to": {
+          "format": "date",
+          "title": "Leave To",
+          "type": "string"
+        },
+        "half_day": {
+          "default": false,
+          "title": "Half Day",
+          "type": "boolean"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "source_message_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Message Id"
+        }
+      },
+      "required": [
+        "employment_id",
+        "leave_from",
+        "leave_to"
+      ],
+      "title": "CreateLeaveRequestArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "create_advance_request",
+    "parameters": {
+      "description": "create_advance_request and create_grocery_request.",
+      "properties": {
+        "employment_id": {
+          "format": "uuid",
+          "title": "Employment Id",
+          "type": "string"
+        },
+        "amount_paise": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000000,
+          "title": "Amount Paise",
+          "type": "integer"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "source_message_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Message Id"
+        }
+      },
+      "required": [
+        "employment_id",
+        "amount_paise"
+      ],
+      "title": "CreateMoneyRequestArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "create_grocery_request",
+    "parameters": {
+      "description": "create_advance_request and create_grocery_request.",
+      "properties": {
+        "employment_id": {
+          "format": "uuid",
+          "title": "Employment Id",
+          "type": "string"
+        },
+        "amount_paise": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000000,
+          "title": "Amount Paise",
+          "type": "integer"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "source_message_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Message Id"
+        }
+      },
+      "required": [
+        "employment_id",
+        "amount_paise"
+      ],
+      "title": "CreateMoneyRequestArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "record_grocery_spend",
+    "parameters": {
+      "description": "record_grocery_spend and record_cash_spend.",
+      "properties": {
+        "employment_id": {
+          "format": "uuid",
+          "title": "Employment Id",
+          "type": "string"
+        },
+        "amount_paise": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000000,
+          "title": "Amount Paise",
+          "type": "integer"
+        },
+        "item_note": {
+          "title": "Item Note",
+          "type": "string"
+        },
+        "source_message_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Message Id"
+        }
+      },
+      "required": [
+        "employment_id",
+        "amount_paise",
+        "item_note"
+      ],
+      "title": "RecordSpendArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "record_cash_spend",
+    "parameters": {
+      "description": "record_grocery_spend and record_cash_spend.",
+      "properties": {
+        "employment_id": {
+          "format": "uuid",
+          "title": "Employment Id",
+          "type": "string"
+        },
+        "amount_paise": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000000,
+          "title": "Amount Paise",
+          "type": "integer"
+        },
+        "item_note": {
+          "title": "Item Note",
+          "type": "string"
+        },
+        "source_message_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Message Id"
+        }
+      },
+      "required": [
+        "employment_id",
+        "amount_paise",
+        "item_note"
+      ],
+      "title": "RecordSpendArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_balances",
+    "parameters": {
+      "properties": {
+        "employment_id": {
+          "format": "uuid",
+          "title": "Employment Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "employment_id"
+      ],
+      "title": "EmploymentArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "evaluate_request",
+    "parameters": {
+      "properties": {
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id"
+      ],
+      "title": "RequestArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "check_grant",
+    "parameters": {
+      "properties": {
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id"
+      ],
+      "title": "RequestArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "execute_request",
+    "parameters": {
+      "properties": {
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id"
+      ],
+      "title": "RequestArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "open_vote",
+    "parameters": {
+      "properties": {
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "context_text": {
+          "title": "Context Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "context_text"
+      ],
+      "title": "OpenVoteArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "run_payroll",
+    "parameters": {
+      "properties": {
+        "employment_id": {
+          "format": "uuid",
+          "title": "Employment Id",
+          "type": "string"
+        },
+        "month": {
+          "pattern": "^\\d{4}-\\d{2}$",
+          "title": "Month",
+          "type": "string"
+        }
+      },
+      "required": [
+        "employment_id",
+        "month"
+      ],
+      "title": "RunPayrollArgs",
+      "type": "object"
+    }
+  },
+  {
+    "name": "post_contributions",
+    "parameters": {
+      "properties": {
+        "household_id": {
+          "format": "uuid",
+          "title": "Household Id",
+          "type": "string"
+        },
+        "month": {
+          "pattern": "^\\d{4}-\\d{2}$",
+          "title": "Month",
+          "type": "string"
+        }
+      },
+      "required": [
+        "household_id",
+        "month"
+      ],
+      "title": "PostContributionsArgs",
+      "type": "object"
+    }
+  }
+]
