@@ -1,4 +1,5 @@
 """Write app/agents/tool_schemas.json from the Pydantic tool models, so agent schemas never drift from contract 3."""
+
 import json
 from pathlib import Path
 

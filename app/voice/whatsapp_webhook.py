@@ -1,4 +1,5 @@
 """Meta WhatsApp Cloud API webhook. Owned by Divyansh. Check field names against Meta's docs at setup."""
+
 import hashlib
 import hmac
 import logging
@@ -13,8 +14,11 @@ router = APIRouter(prefix="/webhooks/whatsapp", tags=["whatsapp"])
 
 
 @router.get("")
-def verify(hub_mode: str = Query(alias="hub.mode"), hub_verify_token: str = Query(alias="hub.verify_token"),
-           hub_challenge: str = Query(alias="hub.challenge")):
+def verify(
+    hub_mode: str = Query(alias="hub.mode"),
+    hub_verify_token: str = Query(alias="hub.verify_token"),
+    hub_challenge: str = Query(alias="hub.challenge"),
+):
     if hub_mode == "subscribe" and hub_verify_token == settings.wa_verify_token:
         return PlainTextResponse(hub_challenge)
     raise HTTPException(status_code=403)
@@ -33,14 +37,16 @@ def parse_messages(payload: dict) -> list[dict]:
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             for m in change.get("value", {}).get("messages", []) or []:
-                out.append({
-                    "from": m.get("from"),
-                    "id": m.get("id"),
-                    "type": m.get("type"),
-                    "audio_id": (m.get("audio") or {}).get("id"),
-                    "mime_type": (m.get("audio") or {}).get("mime_type"),
-                    "text": (m.get("text") or {}).get("body"),
-                })
+                out.append(
+                    {
+                        "from": m.get("from"),
+                        "id": m.get("id"),
+                        "type": m.get("type"),
+                        "audio_id": (m.get("audio") or {}).get("id"),
+                        "mime_type": (m.get("audio") or {}).get("mime_type"),
+                        "text": (m.get("text") or {}).get("body"),
+                    }
+                )
     return out
 
 
@@ -57,7 +63,8 @@ async def receive(request: Request, background: BackgroundTasks):
 async def handle_inbound(msg: dict) -> None:
     # TODO(Divyansh), per the LLD pipeline:
     # 1. insert message (unique wa_message_id) -> stop on duplicate
-    # 2. ctx = tools get_helper_context(whatsapp_e164="+" + msg["from"]); unknown -> not_registered; no consent -> consent flow
+    # 2. ctx = tools get_helper_context(whatsapp_e164="+" + msg["from"]);
+    #    unknown -> not_registered; no consent -> consent flow
     # 3. text = msg["text"] or stt.transcribe(await whatsapp_client.download_media(msg["audio_id"]))
     # 4. reply = agents.runtime.run_liaison(transcript=text, ctx=ctx, message_id=...)
     # 5. whatsapp_client.send_text(msg["from"], reply_text); save latency per stage

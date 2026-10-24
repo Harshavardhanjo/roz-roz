@@ -1,15 +1,18 @@
 """Request models for contract 2 (web API) and contract 3 (agent tools). Money is integer paise."""
+
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 Month = Field(pattern=r"^\d{4}-\d{2}$")
 MAX_PAISE = 10_000_000
+Weekday = Annotated[int, Field(ge=0, le=6)]  # 0 = Monday ... 6 = Sunday
 
 
 # ---- Contract 2: web API bodies ----
+
 
 class HouseholdCreate(BaseModel):
     household_name: str
@@ -30,13 +33,34 @@ class HelperCreate(BaseModel):
     role: str
     salary_paise: int = Field(gt=0, le=MAX_PAISE)
     payday_dom: int = Field(ge=1, le=31)  # shorter months pay on their last day
-    weekly_off: list[int] = Field(default_factory=lambda: [6])
-    paid_leaves_per_month: float = 2
+    weekly_off: list[Weekday] = Field(default_factory=lambda: [6], max_length=6)
+    paid_leaves_per_month: float = Field(default=2, ge=0, le=31)
     deduct_extra_leave: bool = True
     advance_auto_limit_paise: int = Field(ge=0, le=MAX_PAISE)
     advance_monthly_limit_paise: int = Field(ge=0, le=MAX_PAISE)
     grocery_auto_limit_paise: int = Field(ge=0, le=MAX_PAISE)
     grocery_monthly_budget_paise: int = Field(ge=0, le=MAX_PAISE)
+
+
+class MemberUpdate(BaseModel):
+    split_weight: int = Field(ge=1, le=10)
+
+
+class EmploymentUpdate(BaseModel):
+    """PATCH /api/employments/{eid}: any subset of the terms."""
+
+    role: str | None = None
+    lang: Literal["kn", "hi", "ta", "te", "en"] | None = None
+    salary_paise: int | None = Field(default=None, gt=0, le=MAX_PAISE)
+    payday_dom: int | None = Field(default=None, ge=1, le=31)
+    weekly_off: list[Weekday] | None = Field(default=None, max_length=6)
+    paid_leaves_per_month: float | None = Field(default=None, ge=0, le=31)
+    deduct_extra_leave: bool | None = None
+    advance_auto_limit_paise: int | None = Field(default=None, ge=0, le=MAX_PAISE)
+    advance_monthly_limit_paise: int | None = Field(default=None, ge=0, le=MAX_PAISE)
+    grocery_auto_limit_paise: int | None = Field(default=None, ge=0, le=MAX_PAISE)
+    grocery_monthly_budget_paise: int | None = Field(default=None, ge=0, le=MAX_PAISE)
+    status: Literal["active", "ended"] | None = None
 
 
 class RulesUpdate(BaseModel):
@@ -71,6 +95,7 @@ class SignupCreate(BaseModel):
 
 # ---- Contract 3: agent tool calls ----
 
+
 class ToolCall(BaseModel):
     args: dict
     idempotency_key: str
@@ -97,6 +122,7 @@ class CreateLeaveRequestArgs(BaseModel):
 
 class CreateMoneyRequestArgs(BaseModel):
     """create_advance_request and create_grocery_request."""
+
     employment_id: UUID
     amount_paise: int = Field(gt=0, le=MAX_PAISE)
     note: str | None = None
@@ -105,6 +131,7 @@ class CreateMoneyRequestArgs(BaseModel):
 
 class RecordSpendArgs(BaseModel):
     """record_grocery_spend and record_cash_spend."""
+
     employment_id: UUID
     amount_paise: int = Field(gt=0, le=MAX_PAISE)
     item_note: str
