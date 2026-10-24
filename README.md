@@ -52,7 +52,7 @@ LLD doc in step with any contract change.
 |---|---|
 | `app/` except `voice/` and `agents/`, `migrations/`, `seed/`, `tests/` | Harsha |
 | `app/voice/`, `app/agents/` | Divyansh |
-| Next.js web app (separate repo) | Venky |
+| `web/` (Next.js app) | Venky |
 
 Conventions: money is integer paise; IDs are UUIDv4; dates and months are IST (`YYYY-MM`); agents reach the database
 only through `/tools/*`.
