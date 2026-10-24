@@ -1,4 +1,5 @@
 """Apply migrations/*.sql in order. Every statement is idempotent (create ... if not exists)."""
+
 from pathlib import Path
 
 import psycopg

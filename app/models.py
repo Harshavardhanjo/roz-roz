@@ -1,8 +1,20 @@
 """ORM mapping of contract 1. migrations/001_init.sql is the source of truth for constraints."""
+
 import uuid
 
 from sqlalchemy import (
-    BigInteger, Boolean, CHAR, Date, DateTime, ForeignKey, Integer, Numeric, SmallInteger, Text, Uuid, func,
+    CHAR,
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    SmallInteger,
+    Text,
+    Uuid,
+    func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import mapped_column
@@ -200,7 +212,7 @@ class AgentRun(Base):
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    at = _created()
+    at = mapped_column(DateTime(timezone=True), nullable=False)  # set in Python so the hash covers it
     household_id = mapped_column(Uuid)
     actor = mapped_column(Text, nullable=False)
     action = mapped_column(Text, nullable=False)
@@ -222,3 +234,23 @@ class Signup(Base):
     phone = mapped_column(Text, nullable=False)
     pays_by = mapped_column(Text)
     created_at = _created()
+
+
+class ToolCallRecord(Base):
+    __tablename__ = "tool_call"
+    idempotency_key = mapped_column(Text, primary_key=True)
+    tool = mapped_column(Text, nullable=False)
+    response = mapped_column(JSONB, nullable=False)
+    created_at = _created()
+
+
+class AgentGrant(Base):
+    __tablename__ = "agent_grant"
+    id = mapped_column(Text, primary_key=True)
+    member_id = mapped_column(ForeignKey("member.id"), nullable=False)
+    household_id = mapped_column(ForeignKey("household.id"), nullable=False)
+    scopes = mapped_column(JSONB, nullable=False)
+    status = mapped_column(Text, nullable=False, default="active")  # active | revoked
+    provider = mapped_column(Text, nullable=False, default="local")
+    created_at = _created()
+    revoked_at = mapped_column(DateTime(timezone=True))

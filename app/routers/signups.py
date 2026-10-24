@@ -1,22 +1,20 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
-from ..config import settings
-from ..deps import todo
+from ..db import get_db
 from ..schemas import SignupCreate
+from ..services import signups
 
 router = APIRouter(prefix="/api", tags=["signups"])
 
 
-@router.post("/signups")
-def create_signup(body: SignupCreate):
-    if settings.use_stubs:
-        return {"ok": True}
-    todo("insert signup (unique on phone + source)")
+@router.post("/signups", status_code=201)
+def create_signup(body: SignupCreate, db: Session = Depends(get_db)):
+    signups.record(db, body.source, body.name, body.phone, body.pays_by)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/stats")
-def stats():
-    if settings.use_stubs:
-        return {"total": 0, "by_source": {"landing": 0, "household": 0, "helper": 0}, "last_hour": 0,
-                "pays_by": {}, "voice_median_latency_ms": None}
-    todo("signup counts")
+def stats(db: Session = Depends(get_db)):
+    return signups.stats(db)

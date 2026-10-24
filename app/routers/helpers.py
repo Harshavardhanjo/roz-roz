@@ -1,56 +1,91 @@
 import uuid
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from .. import stubs
-from ..config import settings
-from ..deps import current_member, require_owner, todo
-from ..schemas import AbsenceCreate, HelperCreate, PayrollRunCreate
+from .. import clock
+from ..db import get_db
+from ..deps import current_member, employment_of, household_of, require_owner
+from ..errors import bad_request
+from ..models import Member, PayrollRun
+from ..schemas import AbsenceCreate, EmploymentUpdate, HelperCreate, PayrollRunCreate
+from ..services import audit, households, leave, payroll, views
 
 router = APIRouter(prefix="/api", tags=["helpers"])
 
 
-@router.post("/households/{hid}/helpers")
-def add_helper(hid: uuid.UUID, body: HelperCreate, owner: dict = Depends(require_owner)):
-    if settings.use_stubs:
-        return {"helper_id": stubs.HELPER_ID, "employment_id": stubs.EMPLOYMENT_ID,
-                "whatsapp_link": "https://wa.me/910000000000?text=Namaste"}
-    todo("upsert helper by whatsapp_e164; create employment + helper_spending wallet")
+@router.post("/households/{hid}/helpers", status_code=201)
+def add_helper(
+    hid: uuid.UUID, body: HelperCreate, owner: Member = Depends(require_owner), db: Session = Depends(get_db)
+):
+    helper, employment = households.add_helper(db, household_of(db, owner, hid), body, owner)
+    db.commit()
+    return {
+        "helper_id": str(helper.id),
+        "employment_id": str(employment.id),
+        "whatsapp_link": households.whatsapp_link(),
+    }
 
 
 @router.patch("/employments/{eid}")
-def patch_employment(eid: uuid.UUID, body: dict, owner: dict = Depends(require_owner)):
-    if settings.use_stubs:
-        return {**stubs.DASHBOARD["helpers"][0], **body}
-    todo("update employment terms")
+def patch_employment(
+    eid: uuid.UUID, body: EmploymentUpdate, owner: Member = Depends(require_owner), db: Session = Depends(get_db)
+):
+    employment = households.update_employment(db, employment_of(db, owner, eid), body, owner)
+    db.commit()
+    return views.employment_detail(db, employment)
 
 
 @router.get("/employments/{eid}")
-def helper_detail(eid: uuid.UUID, member: dict = Depends(current_member)):
-    if settings.use_stubs:
-        return {"employment": stubs.DASHBOARD["helpers"][0],
-                "leave_days": [{"date": "2026-10-08", "kind": "paid", "fraction": 1.0},
-                               {"date": "2026-10-20", "kind": "paid", "fraction": 1.0}],
-                "requests": [stubs.REQUEST, stubs.VOTE_REQUEST], "payroll": []}
-    todo("helper detail")
+def helper_detail(eid: uuid.UUID, member: Member = Depends(current_member), db: Session = Depends(get_db)):
+    return views.employment_detail(db, employment_of(db, member, eid))
 
 
-@router.post("/employments/{eid}/absences")
-def mark_absent(eid: uuid.UUID, body: AbsenceCreate, member: dict = Depends(current_member)):
-    if settings.use_stubs:
-        return {"date": body.date.isoformat(), "kind": "unpaid", "fraction": body.fraction, "marked_by": member["member_id"]}
-    todo("services.leave.record_leave for a member-marked absence")
+@router.post("/employments/{eid}/absences", status_code=201)
+def mark_absent(
+    eid: uuid.UUID, body: AbsenceCreate, member: Member = Depends(current_member), db: Session = Depends(get_db)
+):
+    employment = employment_of(db, member, eid)
+    if body.date.weekday() in employment.weekly_off:
+        raise bad_request("weekly_off", "That day is the helper's weekly off")
+    (entry,) = leave.record_leave(
+        db, employment, body.date, body.date, half_day=body.fraction < 1, marked_by=f"member:{member.id}"
+    )
+    audit.log(
+        db,
+        household_id=employment.household_id,
+        actor=f"member:{member.id}",
+        action="mark_absent",
+        entity="employment",
+        entity_id=employment.id,
+        summary=f"{member.name} marked an absence on {body.date.isoformat()}",
+    )
+    db.commit()
+    return {
+        "date": entry.date.isoformat(),
+        "kind": entry.kind,
+        "fraction": float(entry.fraction),
+        "marked_by": entry.marked_by,
+    }
 
 
 @router.post("/employments/{eid}/payroll/run")
-def run_payroll(eid: uuid.UUID, body: PayrollRunCreate, owner: dict = Depends(require_owner)):
-    if settings.use_stubs:
-        return {**stubs.PAYROLL_RUN, "month": body.month}
-    todo("services.payroll.run_payroll")
+def run_payroll(
+    eid: uuid.UUID, body: PayrollRunCreate, owner: Member = Depends(require_owner), db: Session = Depends(get_db)
+):
+    employment = employment_of(db, owner, eid)
+    if body.month > clock.current_month():
+        raise bad_request("future_month", "Payroll can't run for a future month")
+    run = payroll.run(db, employment, body.month, actor=f"member:{owner.id}")
+    db.commit()
+    return views.payroll_out(run)
 
 
 @router.get("/employments/{eid}/payroll")
-def payroll_history(eid: uuid.UUID, member: dict = Depends(current_member)):
-    if settings.use_stubs:
-        return [stubs.PAYROLL_RUN]
-    todo("payroll history")
+def payroll_history(eid: uuid.UUID, member: Member = Depends(current_member), db: Session = Depends(get_db)):
+    employment = employment_of(db, member, eid)
+    runs = db.scalars(
+        select(PayrollRun).where(PayrollRun.employment_id == employment.id).order_by(PayrollRun.month.desc())
+    ).all()
+    return [views.payroll_out(r) for r in runs]

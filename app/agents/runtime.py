@@ -1,5 +1,6 @@
 """Agent entry points. AGENT_RUNTIME=agenticorg uses AgenticOrg's A2A endpoint; local runs a Claude tool-use loop
 over the same prompts and tools. Both must write an agent_run row. Owned by Divyansh."""
+
 from ..config import settings
 
 
