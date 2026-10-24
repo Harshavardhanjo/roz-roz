@@ -113,6 +113,22 @@ anything built against the old examples; the items marked **Action** need a chan
 - **Action:** `POST /webhooks/whatsapp` returns 401 unless `WA_APP_SECRET` is set (signature check).
 - `/stats` shows the median of `message.latency_ms["total"]` for inbound messages; write `total` in ms.
 
+## Voice and agents (merged from `divyansh/voice-agents`)
+
+- Routes: `GET/POST /webhooks/whatsapp` (Meta), `POST /webhooks/twilio` (only with `WA_PROVIDER=twilio`),
+  `POST /api/dev/voice` (multipart `file` + `phone`, Bearer `TOOLS_TOKEN`; returns transcript, reply and latency
+  without sending on WhatsApp; the demo backup).
+- **Action (Harsha, Vercel env):** `ANTHROPIC_API_KEY` is needed for any voice reply: with `AGENT_RUNTIME=off` the
+  liaison still runs the local Claude loop (only the treasurer falls back to code). Also `ELEVENLABS_API_KEY`,
+  `WA_PHONE_NUMBER_ID`, `WA_ACCESS_TOKEN`, `WA_APP_SECRET`. Optional: `WA_PROVIDER`, `TWILIO_*`, `STT_PROVIDER_KN`,
+  `SARVAM_API_KEY`, `LOCAL_AGENT_MODEL`, `DEV_VOICE_ENABLED` (all in `.env.example`).
+- New reply template keys: `couldnt_hear`, `please_send_voice`, `insufficient_funds`, `leave_exists`; Kannada and
+  Hindi texts are machine drafts until a native speaker checks them.
+- Agent timeouts (env-overridable): `TOOLS_TIMEOUT_S=15` (above the 8 s treasurer that runs inside create_* calls),
+  `LIAISON_TIMEOUT_S=30`.
+- Follow-ups (Harsha): store `agent_run_id` on `tool_call`, keep failed tool calls for error replies, leave dev-route
+  messages out of the `/stats` voice median.
+
 ## Database (contract 1)
 
 - `employment.payday_dom` is 1–31 (was 1–28).
@@ -124,5 +140,4 @@ anything built against the old examples; the items marked **Action** need a chan
 ## Not done yet (backend)
 
 - Grantex: limits are enforced locally with Grantex-style scopes; the Grantex SDK isn't wired in.
-- `handle_inbound` in the WhatsApp webhook and the agent runtimes are Divyansh's (stubs raise `NotImplementedError`).
 - The payday scheduler runs in-process; keep the backend at one instance (the job is idempotent regardless).
