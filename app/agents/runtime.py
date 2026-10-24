@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 
 from .. import clock
@@ -31,6 +31,14 @@ from ..db import SessionLocal
 from ..models import AgentRun, ToolCallRecord
 from . import templates, tools_client
 from .agent_config import agent_settings
+from .outputs import (
+    FINAL_ANSWER_TOOL,
+    LiaisonOutput,
+    TreasurerOutput,
+    final_answer_tool,
+    output_schema,
+    output_schema_text,
+)
 from .tools_client import ToolTransportError
 
 log = logging.getLogger(__name__)
@@ -38,7 +46,6 @@ log = logging.getLogger(__name__)
 AgentName = Literal["liaison", "treasurer"]
 ANTHROPIC_VERSION = "2023-06-01"
 MAX_TRANSCRIPT_CHARS = 2000
-MAX_CLARIFY_CHARS = 300
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 TOOL_SCHEMAS_PATH = Path(__file__).resolve().parent / "tool_schemas.json"
 
@@ -93,7 +100,7 @@ ERROR_TEMPLATES = {
     "no_consent": "consent_prompt",
 }
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-LIMIT_NOTICE = "Tool call limit reached. Do not call more tools; reply with your final JSON answer now."
+LIMIT_NOTICE = f"Tool call limit reached. Do not call more tools; call {FINAL_ANSWER_TOOL} with your answer now."
 AGENTICORG_STATUSES = ("completed", "failed", "hitl_triggered", "budget_exceeded")
 
 
@@ -110,32 +117,6 @@ model_http_factory: Callable[[], httpx.AsyncClient] = _default_model_http
 
 
 # ---- validation ----
-
-
-class LiaisonFinal(BaseModel):
-    clarify: str | None = None
-
-    @field_validator("clarify")
-    @classmethod
-    def _question(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        v = v.strip()
-        if not v:
-            return None
-        if len(v) > MAX_CLARIFY_CHARS:
-            raise ValueError("clarify question is too long")
-        return v
-
-
-class TreasurerFinal(BaseModel):
-    status: Literal["executed", "needs_vote", "needs_topup", "rejected"]
-    summary: str = ""
-
-    @field_validator("summary")
-    @classmethod
-    def _short(cls, v: str) -> str:
-        return v.strip()[:300]
 
 
 def _uuid(value: Any) -> str | None:
@@ -175,8 +156,10 @@ def minimise_context(ctx: dict) -> dict:
 
 
 def render_prompt(agent: AgentName, **values: Any) -> str:
-    """Fill {placeholders} with str.replace: the prompts contain literal JSON braces."""
+    """Fill {placeholders} with str.replace: the prompts contain literal JSON braces. {output_schema} is the JSON
+    Schema of the agent's Pydantic output model (app/agents/outputs.py), filled last."""
     text = (PROMPTS_DIR / f"{agent}.md").read_text(encoding="utf-8")
+    values.setdefault("output_schema", output_schema_text(agent))
     for key, value in values.items():
         text = text.replace("{" + key + "}", value if isinstance(value, str) else json.dumps(value, ensure_ascii=False))
     return text
@@ -418,13 +401,15 @@ async def _local_loop(
     max_calls: int,
     http: httpx.AsyncClient,
     timeout_s: float,
-) -> str:
-    """Claude tool-use loop; returns the final text. Tool results go back as tool_result blocks."""
+) -> Any:
+    """Claude tool-use loop. Tool results go back as tool_result blocks. Returns the input of the model's
+    `final_answer` call (a dict shaped by the agent's output model), or its text when it answered without that tool;
+    the caller validates either against the output model."""
     if not settings.anthropic_api_key:
         raise AgentError("ANTHROPIC_API_KEY is not set for the local agent runtime")
     url = f"{agent_settings.anthropic_base_url.rstrip('/')}/v1/messages"
     headers = {"x-api-key": settings.anthropic_api_key, "anthropic-version": ANTHROPIC_VERSION}
-    tools = tool_definitions(agent)
+    tools = [*tool_definitions(agent), final_answer_tool(agent)]
     messages: list[dict] = [{"role": "user", "content": user_text}]
     capped = False
     while True:
@@ -436,13 +421,17 @@ async def _local_loop(
             "messages": messages,
         }
         if capped:
-            body["tool_choice"] = {"type": "none"}
+            body["tool_choice"] = {"type": "tool", "name": FINAL_ANSWER_TOOL}
         resp = await _post(http, url, headers, body, timeout_s)
         try:
             content = resp.json().get("content") or []
         except (ValueError, AttributeError) as e:
             raise AgentError("Anthropic returned an invalid body") from e
         uses = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
+        final = next((u for u in uses if u.get("name") == FINAL_ANSWER_TOOL), None)
+        uses = [u for u in uses if u.get("name") != FINAL_ANSWER_TOOL]
+        if final is not None and (capped or not uses):
+            return final.get("input")
         if not uses or capped:
             return "".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
         messages.append({"role": "assistant", "content": content})
@@ -464,6 +453,8 @@ async def _local_loop(
                     "content": json.dumps(response, ensure_ascii=False, default=str),
                 }
             )
+        if final is not None:  # answered in the same turn as its last tool calls
+            return final.get("input")
         if state.attempts >= max_calls:
             if not capped:
                 log.warning("%s agent reached %d tool calls", agent, max_calls)
@@ -590,7 +581,7 @@ async def run_liaison(
             "liaison agent failed after %d tool calls (%s); replying from tool outcomes", len(state.records), error
         )
 
-    final = _validate_final(LiaisonFinal, final_raw, "liaison") if final_raw is not None else None
+    final = _validate_final(LiaisonOutput, final_raw, "liaison") if final_raw is not None else None
     replies = [r for rec in state.records if (r := reply_for(rec["name"], rec["response"], small, rec.get("args")))]
     real = [r for r in replies if r["template"] != "not_understood"]
     clarify = final.clarify if final is not None else None
@@ -646,6 +637,7 @@ async def _liaison_inner(
         if runtime == "agenticorg":
             task = {
                 "instructions": system,
+                "output_schema": output_schema("liaison"),
                 "transcript": transcript,
                 "message_id": message_id,
                 "agent_run_id": run_id,
@@ -725,7 +717,7 @@ async def run_treasurer(request_id: str) -> dict:
         if runtime == "agenticorg":
             records = await asyncio.to_thread(_load_tool_records, prefix)
             state.records = [{**r, "args": None, "ms": None} for r in records]
-        final = _validate_final(TreasurerFinal, final_raw, "treasurer") if final_raw is not None else None
+        final = _validate_final(TreasurerOutput, final_raw, "treasurer") if final_raw is not None else None
         status = status or treasurer_status(state.records)
         if status is None and final is not None and final.status in ("needs_topup", "rejected"):
             status = final.status
@@ -764,6 +756,7 @@ async def _treasurer_inner(runtime: str, rid: str, run_id: str, state: _State) -
         if runtime == "agenticorg":
             task = {
                 "instructions": system,
+                "output_schema": output_schema("treasurer"),
                 "request_id": rid,
                 "agent_run_id": run_id,
                 "rules": f"Use idempotency_key 'treasurer:{rid}:<n>' for your n-th tool call (n from 0) and pass "
