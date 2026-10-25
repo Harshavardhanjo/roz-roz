@@ -12,7 +12,9 @@ class VoiceSettings(BaseSettings):
     # Kannada STT: elevenlabs (default) or sarvam (needs SARVAM_API_KEY).
     stt_provider_kn: Literal["elevenlabs", "sarvam"] = "elevenlabs"
     sarvam_api_key: str = ""
-    stt_timeout_s: float = 6.0
+    # Real Scribe calls on short clips took 6.3-6.6 s from the venue; 6 s cut them off. Two tries plus the 30 s
+    # liaison still fit Vercel's 60 s limit.
+    stt_timeout_s: float = 10.0
 
     # meta: WhatsApp Cloud API (default). twilio: the team's Twilio sandbox (/webhooks/twilio).
     wa_provider: Literal["meta", "twilio"] = "meta"
